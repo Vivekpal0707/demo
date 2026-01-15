@@ -9,44 +9,45 @@ const { getUserByIdService } = require("../services/userService");
 
 
 const createUser = async (req, res) => {
-    try {
-        await userSchema.validateAsync(req.body, { abortEarly: false });
-    } catch (error) {
-        return res.status(400).json({
-            message: "Validation error",
-            details: error.details.map(err => err.message)
-        });
+  try {
+    await userSchema.validateAsync(req.body, { abortEarly: false });
+
+    await createUserService(req.body);
+
+    return res.status(201).json({
+      message: "User created successfully",
+      success: true
+    });
+
+  } catch (error) {
+
+    if (error.isJoi) {
+      return res.status(400).json({
+        message: "Validation error",
+        details: error.details.map(err => err.message),
+        success: false
+      });
     }
 
-    try {
-        const saved = await createUserService(req.body);
-
-        if (saved) {
-            return res.status(201).json({
-                message: "User created successfully",
-                success: true
-            });
-        }
-
-        return res.status(500).json({
-            message: "Something went wrong",
-            success: false
-        });
-
-    } catch (error) {
-
-        if (error.name === "SequelizeUniqueConstraintError") {
-            return res.status(409).json({
-                message: "Email already exists",
-                success: false
-            });
-        }
-
-        return res.status(500).json({
-            message: "Something went wrong",
-            success: false
-        });
+    if (error.statusCode === 409) {
+      return res.status(409).json({
+        message: error.message,
+        success: false
+      });
     }
+
+    if (error.name === "SequelizeUniqueConstraintError") {
+      return res.status(409).json({
+        message: "Email already exists",
+        success: false
+      });
+    }
+
+    return res.status(500).json({
+      message: "Something went wrong",
+      success: false
+    });
+  }
 };
 
 const loginUser = async (req, res) => {

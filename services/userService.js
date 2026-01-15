@@ -5,26 +5,20 @@ const { sendOtpEmail, sendMail } = require("./emailService");
 
 const createUserService = async (userData) => {
     const { password, name, email, ...rest } = userData;
-    const hashedPassword = await bcrypt.hash(password, 10);
-    
+
     const existingUser = await UserModel.findOne({
-        where: { email: email }
-      });
-      if (existingUser) {
-        throw new Joi.ValidationError(
-          "Duplicate email",
-          [
-            {
-              message: "Email already exists",
-              path: ["email"],
-              type: "any.duplicate"
-            }
-          ],
-          value
-        );
-      }
-    else{
-  try {
+        where: { email }
+    });
+
+    if (existingUser) {
+        const error = new Error("Email already exists");
+        error.statusCode = 409;
+        throw error;
+    }
+
+    try {
+        const hashedPassword = await bcrypt.hash(password, 10);
+
         await UserModel.create({
             name,
             email,
@@ -35,27 +29,24 @@ const createUserService = async (userData) => {
         try {
             await sendMail(
                 email,
-                "Welcome to Our App ",
+                "Welcome to Our App",
                 `
-                    <h2>Welcome </h2>
-                    <p>Hi ${name}</p>
-                    <p>Email: ${email}</p>
-                    <a href="https://www.google.com">Google</a>
-                `
+          <h2>Welcome</h2>
+          <p>Hi ${name}</p>
+          <p>Email: ${email}</p>
+          <a href="https://www.google.com">Google</a>
+        `
             );
         } catch (mailError) {
-            console.log("MAIL FAILED ", mailError.message);
-
+            console.log("MAIL FAILED:", mailError.message);
         }
 
         return true;
 
     } catch (error) {
-        console.log("DB ERROR ", error.message);
+        console.log("DB ERROR:", error.message);
         throw error;
     }
-    }
-  
 };
 
 const loginUserService = async (email, password) => {
