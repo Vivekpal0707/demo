@@ -46,4 +46,17 @@ const sendMail = async (to, subject, html) => {
     }
 };
 
-module.exports = {sendOtpEmail,sendMail}
+const sendResetPasswordEmail = async (email, link) => {
+  await transporter.sendMail({
+    to: email,
+    subject: "Reset your password",
+    html: `
+      <p>Click the link below to reset your password:</p>
+      <a href="${link}">${link}</a>
+      <p>This link is valid for 15 minutes.</p>
+    `
+  });
+};
+
+
+module.exports = {sendOtpEmail,sendMail,sendResetPasswordEmail}

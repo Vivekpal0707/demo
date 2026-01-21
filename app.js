@@ -10,7 +10,7 @@ app.use(express.json());
 
 app.use('/api', router);
 
-UserModel.sync();
+ UserModel.sync();
 
 const PORT = process.env.PORT || 4000;
 app.listen(PORT,async()=>{
