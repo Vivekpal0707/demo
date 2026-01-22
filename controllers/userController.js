@@ -171,13 +171,6 @@ const forgotPassword = async (req, res) => {
       });
     }
 
-    if (error.status) {
-      return res.status(error.status).json({
-        message: error.message,
-        success: false
-      });
-    }
-
     return res.status(500).json({
       message: "Something went wrong",
       success: false
@@ -229,12 +222,40 @@ const verifyOtp = async (req, res) => {
   }
 };
 
+// const getUser = async (req, res) => {
+//   try {
+//     await authHeaderSchema.validateAsync(req.headers, {
+//       abortEarly: false
+//     });
+
+//     const users = await getAllUsersService();
+
+//     return sendSuccess(
+//       res,
+//       "Users fetched successfully",
+//       users
+//     );
+
+//   } catch (error) {
+
+//     if (error.isJoi) {
+//       return sendError(
+//         res,
+//         error.details.map(err => err.message).join(", "),
+//         401
+//       );
+//     }
+//     return sendError(
+//       res,
+//       "Internal server error",
+//       500
+//     );
+//   }
+// };
+
 const getUser = async (req, res) => {
   try {
-    await authHeaderSchema.validateAsync(req.headers, {
-      abortEarly: false
-    });
-
+ 
     const users = await getAllUsersService();
 
     return sendSuccess(
@@ -244,14 +265,6 @@ const getUser = async (req, res) => {
     );
 
   } catch (error) {
-
-    if (error.isJoi) {
-      return sendError(
-        res,
-        error.details.map(err => err.message).join(", "),
-        401
-      );
-    }
     return sendError(
       res,
       "Internal server error",
@@ -259,6 +272,7 @@ const getUser = async (req, res) => {
     );
   }
 };
+
 
 const getUserById = async (req, res) => {
   try {
@@ -372,7 +386,7 @@ const deleteUser = async (req, res) => {
         403
       );
     }
-
+  
     const deleted = await deleteUserService(id);
 
     if (!deleted) {

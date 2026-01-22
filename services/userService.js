@@ -114,15 +114,26 @@ const forgotPasswordService = async (email) => {
     return true;
   }
 
-  const resetToken = crypto.randomBytes(32).toString("hex");
-  const resetTokenExpiry = new Date(Date.now() + 15 * 60 * 1000);
+  /**
+   * ✅ JWT RESET TOKEN
+   */
+  const token = jwt.sign(
+    { id: user.id },
+    process.env.JWT_SECRET,
+    { expiresIn: "30m" }
+  );
+
+  const resetTokenExpiry = new Date(Date.now() + 30 * 60 * 1000);
 
   await user.update({
-    resetToken,
+    resetToken: token,
     resetTokenExpiry
   });
 
-  const resetLink = `${process.env.FRONTEND_URL}/reset-password?token=${resetToken}`;
+  /**
+   * 🔗 RESET LINK
+   */
+  const resetLink = `${process.env.FRONTEND_URL}/reset-password?token=${token}`;
 
   await sendResetPasswordEmail(user.email, resetLink);
 
@@ -161,11 +172,22 @@ const verifyOtpService = async (otp) => {
   return token;
 };
 
+// const getAllUsersService = async () => {
+//   const users = await UserModel.findAll({
+//     attributes: ['id', 'name', 'email'],
+//     where: {
+//       deletedAt: null   
+//     }
+//   });
+
+//   return users;
+// };
+
 const getAllUsersService = async () => {
   const users = await UserModel.findAll({
     attributes: ['id', 'name', 'email'],
     where: {
-      deletedAt: null   
+      deletedAt: null   // soft deleted users exclude
     }
   });
 
