@@ -25,10 +25,8 @@ exports.auth = async (req, res, next) => {
       }
     });
 
-    if (!user) {
-      return res.status(200).json({
-        data: []  
-      });
+   if (!user) {
+      return res.status(401).json({ error: "Invalid token" });
     }
     req.user = decoded;
     next();

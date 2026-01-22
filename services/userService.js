@@ -28,16 +28,16 @@ const createUserService = async (userData) => {
     });
 
     try {
-      await sendMail(
-        email,
-        "Welcome to Our App",
-        `
+      await sendMail({
+        to: email,
+        subject: "Welcome to Our App",
+        html: `
           <h2>Welcome</h2>
           <p>Hi ${name}</p>
           <p>Email: ${email}</p>
           <a href="https://www.google.com">Google</a>
         `
-      );
+      });
     } catch (mailError) {
       console.log("MAIL FAILED:", mailError.message);
     }
@@ -111,11 +111,11 @@ const forgotPasswordService = async (email) => {
   });
 
   if (!user) {
-    throw { status: 404, message: "User not found" };
+    return true;
   }
 
-  const resetToken = crypto.randomBytes(32).toString('hex');
-  const resetTokenExpiry = new Date(Date.now() + 15 * 60 * 1000); 
+  const resetToken = crypto.randomBytes(32).toString("hex");
+  const resetTokenExpiry = new Date(Date.now() + 15 * 60 * 1000);
 
   await user.update({
     resetToken,
