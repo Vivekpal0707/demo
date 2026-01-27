@@ -45,21 +45,43 @@ const loginSchema = Joi.object({
     }),
 
   password: Joi.string()
+    .min(8)
+    .max(16)
+    .pattern(
+      new RegExp(
+        "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[@$!%*?&])[A-Za-z\\d@$!%*?&]{8,16}$"
+      )
+    )
     .required()
     .messages({
-      "any.required": "Password is required"
+      "any.required": "Password is required",
+      "string.pattern.base":
+        "Password must contain at least 1 uppercase, 1 lowercase, 1 number and 1 special character"
     })
 }).unknown(false);
 
 const resetPasswordSchema = Joi.object({
   currentPassword: Joi.string()
+     .min(8)
+    .max(16)
+    .pattern(
+      new RegExp(
+        "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[@$!%*?&])[A-Za-z\\d@$!%*?&]{8,16}$"
+      )
+    )
     .required()
     .messages({
       "any.required": "Current password is required"
     }),
 
   newPassword: Joi.string()
-    .min(8)
+     .min(8)
+    .max(16)
+    .pattern(
+      new RegExp(
+        "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[@$!%*?&])[A-Za-z\\d@$!%*?&]{8,16}$"
+      )
+    )
     .required()
     .messages({
       "any.required": "New password is required",
@@ -68,6 +90,13 @@ const resetPasswordSchema = Joi.object({
 
   confirmPassword: Joi.string()
     .valid(Joi.ref("newPassword"))
+     .min(8)
+    .max(16)
+    .pattern(
+      new RegExp(
+        "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[@$!%*?&])[A-Za-z\\d@$!%*?&]{8,16}$"
+      )
+    )
     .required()
     .messages({
       "any.only": "New password and confirm password do not match",
@@ -81,9 +110,52 @@ const forgotPasswordSchema = Joi.object({
     .required()
     .messages({
       "string.email": "Please enter a valid email address",
-      "any.required": "Email is required"
+      "any.required": "Email is required",
+      "string.empty": "Email cannot be empty"
     })
-}).unknown(false);
+});
+
+const forgotLinkHeaderSchema = Joi.object({
+  authorization: Joi.string()
+    .required()
+    .messages({
+      "any.required": "Authorization token is required",
+      "string.empty": "Authorization token cannot be empty"
+    })
+}).unknown(true);
+
+const resetForgotPasswordSchema = Joi.object({
+  newPassword: Joi.string()
+     .min(8)
+    .max(16)
+    .pattern(
+      new RegExp(
+        "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[@$!%*?&])[A-Za-z\\d@$!%*?&]{8,16}$"
+      )
+    )
+    .required()
+    .messages({
+      "string.min": "Password must be at least 8 characters long",
+      "any.required": "New password is required",
+      "string.empty": "New password cannot be empty"
+    }),
+
+  confirmPassword: Joi.string()
+    .valid(Joi.ref("newPassword"))
+     .min(8)
+    .max(16)
+    .pattern(
+      new RegExp(
+        "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[@$!%*?&])[A-Za-z\\d@$!%*?&]{8,16}$"
+      )
+    )
+    .required()
+    .messages({
+      "any.only": "Passwords do not match",
+      "any.required": "Confirm password is required",
+      "string.empty": "Confirm password cannot be empty"
+    })
+});
 
 const verifyOtpSchema = Joi.object({
   otp: Joi.string()
@@ -106,6 +178,16 @@ const authHeaderSchema = Joi.object({
       "string.pattern.base": "Invalid authorization token format"
     })
 }).unknown(true); 
+
+const paginationSchema = Joi.object({
+  page: Joi.number().integer().min(1).max(100),
+  limit: Joi.number().integer().min(1).max(100),
+
+  search: Joi.string().trim().allow("", null),
+
+  startDate: Joi.date().iso().optional(),
+  endDate: Joi.date().iso().min(Joi.ref('startDate')).optional()
+}).unknown(true);
 
 const userIdParamSchema = Joi.object({
   id: Joi.number()
@@ -131,7 +213,10 @@ const updateUserBodySchema = Joi.object({
   password: Joi.string()
     .min(8)
     .max(16)
-    .optional()
+    .forbidden().messages({
+  "any.unknown": "Password can’t be updated"
+})
+   
 })
 .min(1); 
 
@@ -145,4 +230,4 @@ const deleteUserParamSchema = Joi.object({
     })
 });
 
-module.exports = { userSchema,loginSchema,resetPasswordSchema,verifyOtpSchema,authHeaderSchema,userIdParamSchema,updateUserBodySchema,deleteUserParamSchema}
+module.exports = { userSchema,loginSchema,resetPasswordSchema,forgotPasswordSchema,forgotLinkHeaderSchema,resetForgotPasswordSchema,verifyOtpSchema,authHeaderSchema,paginationSchema,userIdParamSchema,updateUserBodySchema,deleteUserParamSchema}

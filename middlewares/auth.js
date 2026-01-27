@@ -35,3 +35,34 @@ exports.auth = async (req, res, next) => {
     return res.status(403).json({ error: 'Invalid or expired token' });
   }
 };
+
+exports.verifyResetToken = (req, res, next) => {
+  try {
+    const authHeader = req.headers.authorization;
+
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return res.status(401).json({
+        message: "Authorization token missing"
+      });
+    }
+
+    const token = authHeader.split(" ")[1];
+
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+    if (decoded.type !== "RESET_PASSWORD") {
+      return res.status(401).json({
+        message: "Invalid reset token"
+      });
+    }
+
+    req.userId = decoded.id;
+    req.resetToken = token;
+
+    next();
+  } catch (error) {
+    return res.status(401).json({
+      message: "Reset link expired"
+    });
+  }
+};

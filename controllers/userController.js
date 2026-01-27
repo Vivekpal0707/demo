@@ -1,5 +1,5 @@
 const Joi = require('joi');
-const { userSchema,loginSchema,resetPasswordSchema,forgotPasswordSchema,verifyOtpSchema,authHeaderSchema,userIdParamSchema,updateUserBodySchema,deleteUserParamSchema } = require('../middlewares/userValidate');
+const { userSchema,loginSchema,resetPasswordSchema,forgotPasswordSchema,forgotLinkHeaderSchema,resetForgotPasswordSchema,verifyOtpSchema,authHeaderSchema,paginationSchema,userIdParamSchema,updateUserBodySchema,deleteUserParamSchema } = require('../middlewares/userValidate');
 const { sendSuccess, sendError } = require("../middlewares/responseHandler");
 const { UserModel } = require('../models/userModel');
 const { createUserService } = require("../services/userService")
@@ -11,17 +11,19 @@ const { updateUserService } = require("../services/userService");
 const { deleteUserService } = require("../services/userService");
 const { resetPasswordService } = require("../services/userService");
 const { forgotPasswordService } = require('../services/userService');
+const {verifyForgotLinkService} =require("../services/userService");
+const {resetForgotPasswordService} =require("../services/userService");
 
 const createUser = async (req, res) => {
   try {
     await userSchema.validateAsync(req.body, { abortEarly: false });
 
-    await createUserService(req.body);
+    const user = await createUserService(req.body);
 
     return sendSuccess(
       res,
       "User created successfully",
-      null,
+      { id: user.id },
       201
     );
 
@@ -44,35 +46,27 @@ const createUser = async (req, res) => {
       );
     }
 
-    if (error.name === "SequelizeUniqueConstraintError") {
-      return sendError(
-        res,
-        "Email already exists",
-        409
-      );
-    }
-
     return sendError(
       res,
-      "Something went wrong",
-      500
+      error.message || "Something went wrong",
+      error.statusCode || 500
     );
   }
 };
 
 const loginUser = async (req, res) => {
   try {
-    await loginSchema.validateAsync(req.body, {
-      abortEarly: false
-    });
+    await loginSchema.validateAsync(req.body, { abortEarly: false });
 
     const { email, password } = req.body;
 
-    await loginUserService(email, password);
+    const user = await loginUserService(email, password);
 
     return sendSuccess(
       res,
-      "OTP sent to your email"
+      "OTP sent to your email",
+      { id: user.id },
+      200
     );
 
   } catch (error) {
@@ -146,43 +140,98 @@ const resetPassword = async (req, res) => {
   }
 };
 
+
 const forgotPassword = async (req, res) => {
   try {
-    await forgotPasswordSchema.validateAsync(req.body, {
-      abortEarly: false
-    });
-
-    const { email } = req.body;
+    const { email } = await forgotPasswordSchema.validateAsync(req.body,{ abortEarly: false });
 
     await forgotPasswordService(email);
 
     return res.status(200).json({
-      message: "Password reset link sent to your registered email",
-      success: true
+      success: true,
+      message: "Verification link sent to your email"
     });
 
   } catch (error) {
 
     if (error.isJoi) {
       return res.status(400).json({
-        message: "Validation error",
-        details: error.details.map(err => err.message),
-        success: false
+        success: false,
+        message: error.details.map(err => err.message).join(", ")
       });
     }
 
     return res.status(500).json({
-      message: "Something went wrong",
-      success: false
+      success: false,
+      message: "Something went wrong"
+    });
+  }
+};
+
+const verifyForgotLink = async (req, res) => {
+  try {
+    const { authorization } = await forgotLinkHeaderSchema.validateAsync(req.headers,{ abortEarly: false });
+
+    const token = authorization.split(" ")[1];
+    if (!token) {
+      return res.status(400).json({ message: "Invalid authorization token format" });
+    }
+
+    const resetToken = await verifyForgotLinkService(token);
+
+    return res.status(200).json({
+      success: true,
+      resetLink: `${resetToken}`
+    });
+
+  } catch (error) {
+
+    if (error.isJoi) {
+      return res.status(400).json({
+        success: false,
+        message: error.details.map(err => err.message).join(", ")
+      });
+    }
+
+    return res.status(400).json({
+      success: false,
+      message: error.message
+    });
+  }
+};
+
+const resetForgotPassword = async (req, res) => {
+  try {
+    const { newPassword } = await resetForgotPasswordSchema.validateAsync(req.body,{ abortEarly: false });
+
+    const { userId, resetToken } = req; 
+
+    await resetForgotPasswordService(userId, resetToken, newPassword);
+
+    return res.status(200).json({
+      success: true,
+      message: "Password reset successfully"
+    });
+
+  } catch (error) {
+
+    if (error.isJoi) {
+      return res.status(400).json({
+        success: false,
+        message: error.details.map(err => err.message).join(", ")
+      });
+    }
+
+    return res.status(400).json({
+      success: false,
+      message: error.message
     });
   }
 };
 
 const verifyOtp = async (req, res) => {
   try {
-    const { otp } = await verifyOtpSchema.validateAsync(req.body, {
-      abortEarly: false
-    });
+    const { otp } = await verifyOtpSchema.validateAsync(req.body, {abortEarly: false});
 
     const token = await verifyOtpService(otp);
 
@@ -212,8 +261,6 @@ const verifyOtp = async (req, res) => {
         error.status
       );
     }
-
-    console.log(error);
     return sendError(
       res,
       "Something went wrong",
@@ -222,63 +269,41 @@ const verifyOtp = async (req, res) => {
   }
 };
 
-// const getUser = async (req, res) => {
-//   try {
-//     await authHeaderSchema.validateAsync(req.headers, {
-//       abortEarly: false
-//     });
-
-//     const users = await getAllUsersService();
-
-//     return sendSuccess(
-//       res,
-//       "Users fetched successfully",
-//       users
-//     );
-
-//   } catch (error) {
-
-//     if (error.isJoi) {
-//       return sendError(
-//         res,
-//         error.details.map(err => err.message).join(", "),
-//         401
-//       );
-//     }
-//     return sendError(
-//       res,
-//       "Internal server error",
-//       500
-//     );
-//   }
-// };
-
 const getUser = async (req, res) => {
   try {
- 
-    const users = await getAllUsersService();
+    await authHeaderSchema.validateAsync(req.headers, {
+      abortEarly: false
+    });
 
-    return sendSuccess(
-      res,
-      "Users fetched successfully",
-      users
-    );
+    const {page,limit,search,startDate,endDate} = await paginationSchema.validateAsync(req.query, {abortEarly: false});
+
+    const users = await getAllUsersService(page,limit,search,startDate,endDate);
+
+    return res.status(200).json({
+      success: true,
+      message: "Users fetched successfully",
+      data: users
+    });
 
   } catch (error) {
-    return sendError(
-      res,
-      "Internal server error",
-      500
-    );
+
+    if (error.isJoi) {
+      return res.status(400).json({
+        success: false,
+        message: error.details.map(err => err.message).join(", ")
+      });
+    }
+
+    return res.status(500).json({
+      success: false,
+      message: error.message
+    });
   }
 };
 
-
 const getUserById = async (req, res) => {
   try {
-    await userIdParamSchema.validateAsync(req.params, {
-      abortEarly: false
-    });
+    await userIdParamSchema.validateAsync(req.params, {abortEarly: false});
 
     const { id } = req.params;
 
@@ -326,9 +351,7 @@ const updateUser = async (req, res) => {
       );
     }
 
-    await updateUserBodySchema.validateAsync(req.body, {
-      abortEarly: false
-    });
+    await updateUserBodySchema.validateAsync(req.body, {abortEarly: false});
 
     if (Number(req.params.id) !== Number(req.user.id)) {
       return sendError(
@@ -350,7 +373,10 @@ const updateUser = async (req, res) => {
 
     return sendSuccess(
       res,
-      "User updated successfully"
+      "User updated successfully",
+        { id: user.id },
+      200
+
     );
 
   } catch (error) {
@@ -362,8 +388,6 @@ const updateUser = async (req, res) => {
         400
       );
     }
-
-    console.error("UPDATE USER ERROR:", error);
 
     return sendError(
       res,
@@ -420,5 +444,4 @@ const deleteUser = async (req, res) => {
   }
 };
 
-
-module.exports = { createUser, loginUser, resetPassword,forgotPassword, verifyOtp, getUser, getUserById, updateUser, deleteUser }
+module.exports = { createUser, loginUser, resetPassword,forgotPassword,verifyForgotLink,resetForgotPassword,verifyOtp, getUser, getUserById, updateUser, deleteUser }

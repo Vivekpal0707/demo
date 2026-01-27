@@ -1,4 +1,5 @@
 const bcrypt = require("bcrypt");
+const { Op } = require("sequelize");
 const crypto = require('crypto');
 const { UserModel } = require("../models/userModel");
 const jwt = require("jsonwebtoken");
@@ -17,37 +18,30 @@ const createUserService = async (userData) => {
     throw error;
   }
 
+  const hashedPassword = await bcrypt.hash(password, 10);
+
+  const user = await UserModel.create({
+    name,
+    email,
+    ...rest,
+    password: hashedPassword
+  });
+
   try {
-    const hashedPassword = await bcrypt.hash(password, 10);
-
-    await UserModel.create({
-      name,
-      email,
-      ...rest,
-      password: hashedPassword
+    await sendMail({
+      to: email,
+      subject: "Welcome to Our App",
+      html: `
+        <h2>Welcome</h2>
+        <p>Hi ${name}</p>
+        <p>Email: ${email}</p>
+        <a href="https://www.google.com">Google</a>
+      `
     });
-
-    try {
-      await sendMail({
-        to: email,
-        subject: "Welcome to Our App",
-        html: `
-          <h2>Welcome</h2>
-          <p>Hi ${name}</p>
-          <p>Email: ${email}</p>
-          <a href="https://www.google.com">Google</a>
-        `
-      });
-    } catch (mailError) {
-      console.log("MAIL FAILED:", mailError.message);
-    }
-
-    return true;
-
-  } catch (error) {
-    console.log("DB ERROR:", error.message);
-    throw error;
+  } catch (mailError) {
+    console.error("Welcome mail failed:", mailError.message);
   }
+  return user;
 };
 
 const loginUserService = async (email, password) => {
@@ -65,12 +59,11 @@ const loginUserService = async (email, password) => {
   const otp = Math.floor(100000 + Math.random() * 900000).toString();
   const otpExpiry = new Date(Date.now() + 5 * 60 * 1000);
 
-  await user.reload();
   await user.update({ otp, otpExpiry });
 
   await sendOtpEmail(user.email, otp);
 
-  return true;
+  return user; 
 };
 
 const resetPasswordService = async (userId, currentPassword, newPassword) => {
@@ -104,38 +97,116 @@ const resetPasswordService = async (userId, currentPassword, newPassword) => {
 
 const forgotPasswordService = async (email) => {
   const user = await UserModel.findOne({
+    where: { email, deletedAt: null }
+  });
+
+  if (!user) return true; 
+
+  const verifyToken = jwt.sign(
+    { id: user.id, type: "VERIFY_FORGOT" },
+    process.env.JWT_SECRET,
+    { expiresIn: "30m" }
+  );
+
+  await user.update({ resetToken: verifyToken });
+
+  const link = `${verifyToken}`;
+
+  await sendResetPasswordEmail(user.email, link);
+
+  return true;
+};
+
+const verifyForgotLinkService = async (token) => {
+  let decoded;
+
+  try {
+    decoded = jwt.verify(token, process.env.JWT_SECRET);
+  } catch (err) {
+    throw new Error("Verification link expired");
+  }
+
+  if (decoded.type !== "VERIFY_FORGOT") {
+    throw new Error("Invalid verification link");
+  }
+
+  const user = await UserModel.findOne({
     where: {
-      email,
+      id: decoded.id,
+      resetToken: token,
       deletedAt: null
     }
   });
 
   if (!user) {
-    return true;
+    throw new Error("Invalid or already used verification link");
   }
 
-  /**
-   * ✅ JWT RESET TOKEN
-   */
-  const token = jwt.sign(
-    { id: user.id },
+  const resetToken = jwt.sign(
+    { id: user.id, type: "RESET_PASSWORD" },
     process.env.JWT_SECRET,
     { expiresIn: "30m" }
   );
 
-  const resetTokenExpiry = new Date(Date.now() + 30 * 60 * 1000);
+  await user.update({ resetToken });
 
-  await user.update({
-    resetToken: token,
-    resetTokenExpiry
+  return resetToken;
+};
+
+const resetForgotPasswordService = async (userId, token, newPassword) => {
+  const user = await UserModel.findOne({
+    where: {
+      id: userId,
+      resetToken: token,
+      deletedAt: null
+    }
   });
 
-  /**
-   * 🔗 RESET LINK
-   */
-  const resetLink = `${process.env.FRONTEND_URL}/reset-password?token=${token}`;
+  if (!user) {
+    throw new Error("Invalid reset link");
+  }
 
-  await sendResetPasswordEmail(user.email, resetLink);
+  const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+  await user.update({
+    password: hashedPassword,
+    resetToken: null
+  });
+
+  return true;
+};
+
+exports.resetPasswordService = async (token, newPassword) => {
+  let decoded;
+
+  try {
+    decoded = jwt.verify(token, process.env.JWT_SECRET);
+  } catch {
+    throw new Error("Reset link expired");
+  }
+
+  if (decoded.type !== "RESET_PASSWORD") {
+    throw new Error("Invalid reset token");
+  }
+
+  const user = await UserModel.findOne({
+    where: {
+      id: decoded.id,
+      resetToken: token,
+      deletedAt: null
+    }
+  });
+
+  if (!user) {
+    throw new Error("Invalid reset token");
+  }
+
+  const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+  await user.update({
+    password: hashedPassword,
+    resetToken: null
+  });
 
   return true;
 };
@@ -172,23 +243,38 @@ const verifyOtpService = async (otp) => {
   return token;
 };
 
-// const getAllUsersService = async () => {
-//   const users = await UserModel.findAll({
-//     attributes: ['id', 'name', 'email'],
-//     where: {
-//       deletedAt: null   
-//     }
-//   });
+const getAllUsersService = async (
+  page = 1,
+  limit = 5,
+  search,
+  startDate,
+  endDate
+) => {
+  const offset = (page - 1) * limit;
 
-//   return users;
-// };
+  const whereCondition = {
+    deletedAt: null
+  };
 
-const getAllUsersService = async () => {
+  if (search) {
+    whereCondition[Op.or] = [
+      { name: { [Op.like]: `%${search}%` } },
+      { email: { [Op.like]: `%${search}%` } }
+    ];
+  }
+
+  if (startDate && endDate) {
+    whereCondition.createdAt = {
+      [Op.between]: [startDate, endDate]
+    };
+  }
+
   const users = await UserModel.findAll({
-    attributes: ['id', 'name', 'email'],
-    where: {
-      deletedAt: null   // soft deleted users exclude
-    }
+    attributes: ['id', 'name', 'email', 'createdAt'],
+    where: whereCondition,
+    limit,
+    offset,
+    order: [['id', 'ASC']]
   });
 
   return users;
@@ -209,10 +295,12 @@ const updateUserService = async (userId, updateData) => {
     return null;
   }
 
-  await user.update(updateData);
+  const { password, ...safeUpdateData } = updateData;
+
+  await user.update(safeUpdateData);
+
   return user;
 };
-
 
 const deleteUserService = async (userId) => {
   const user = await UserModel.findByPk(userId);
@@ -226,7 +314,7 @@ const deleteUserService = async (userId) => {
 
 
 module.exports = {
-  createUserService, loginUserService, resetPasswordService,forgotPasswordService, verifyOtpService, getAllUsersService, getUserByIdService, updateUserService, deleteUserService
+  createUserService, loginUserService, resetPasswordService,forgotPasswordService,verifyForgotLinkService,resetForgotPasswordService, verifyOtpService, getAllUsersService, getUserByIdService, updateUserService, deleteUserService
 };
 
 

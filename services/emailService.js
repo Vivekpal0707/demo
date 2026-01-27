@@ -31,7 +31,6 @@ const sendMail = async ({ to, subject, text, html }) => {
   }
 };
 
-
 const sendOtpEmail = async (email, otp) => {
   return await sendMail({
     to: email,
@@ -41,13 +40,15 @@ const sendOtpEmail = async (email, otp) => {
 };
 
 const sendResetPasswordEmail = async (email, link) => {
-  return await sendMail({
+  await transporter.sendMail({
+    from: `"My App" <${process.env.EMAIL_USER}>`,
     to: email,
     subject: "Reset your password",
     html: `
+      <h3>Password Reset</h3>
       <p>Click the link below to reset your password:</p>
       <a href="${link}">${link}</a>
-      <p>This link is valid for 15 minutes.</p>
+      <p>This link is valid for 30 minutes.</p>
     `
   });
 };
